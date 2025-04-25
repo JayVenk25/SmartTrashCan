@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trash Can - Statistics</title>
+    <style>
+        :root {
+            --primary-color: #2ecc71;
+            --secondary-color: #27ae60;
+            --background-color: #f5f7fa;
+            --text-color: #2c3e50;
+            --card-bg: #ffffff;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --warning-color: #e74c3c;
+            --info-color: #3498db;
+            --highlight-color: #f1c40f;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--background-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 1rem;
+            text-align: center;
+            box-shadow: var(--shadow);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            margin: 0;
+            flex-grow: 1;
+        }
+
+        .back-button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+        }
+
+        main {
+            flex: 1;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            box-shadow: var(--shadow);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card-icon {
+            width: 24px;
+            height: 24px;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 200px;
+            position: relative;
+        }
+
+        .bar-chart {
+            display: flex;
+            align-items: flex-end;
+            height: 150px;
+            gap: 8px;
+            margin-top: 1rem;
+        }
+
+        .bar {
+            flex-grow: 1;
+            background: linear-gradient(to top, var(--primary-color), var(--secondary-color));
+            border-radius: 4px 4px 0 0;
+            position: relative;
+        }
+
+        .bar-label {
+            position: absolute;
+            bottom: -25px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #7f8c8d;
+        }
+
+        .pie-chart {
+            width: 150px;
+            height: 150px;
+            margin: 1rem auto;
+            position: relative;
+            border-radius: 50%;
+            background: conic-gradient(
+                var(--primary-color) 0% 25%,
+                var(--info-color) 25% 50%,
+                var(--warning-color) 50% 75%,
+                var(--highlight-color) 75% 100%
+            );
+        }
+
+        .pie-legend {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+
+        .recent-items {
+            margin-top: 1rem;
+        }
+
+        .item-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #ecf0f1;
+        }
+
+        .item-name {
+            font-weight: 500;
+        }
+
+        .item-category {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            color: white;
+        }
+
+        .category-recyclable {
+            background-color: var(--info-color);
+        }
+
+        .category-compostable {
+            background-color: var(--primary-color);
+        }
+
+        .category-hazardous {
+            background-color: var(--warning-color);
+        }
+
+        .category-general {
+            background-color: #7f8c8d;
+        }
+
+        .time-filter {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .time-btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 20px;
+            background-color: var(--card-bg);
+            color: var(--text-color);
+            cursor: pointer;
+            box-shadow: var(--shadow);
+            transition: all 0.2s ease;
+        }
+
+        .time-btn.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        footer {
+            padding: 1rem;
+            text-align: center;
+            font-size: 0.9rem;
+            color: #7f8c8d;
+            background-color: var(--card-bg);
+            box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Modal styles for item analysis */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            box-shadow: var(--shadow);
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 2rem;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-color);
+        }
+
+        .item-image {
+            width: 100%;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+        }
+
+        .analysis-item {
+            margin-bottom: 1.5rem;
+        }
+
+        .analysis-label {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            color: var(--primary-color);
+        }
+
+        .item-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .item-tag {
+            background-color: #ecf0f1;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+        }
+
+        /* Icons */
+        .back-icon, .trash-count-icon, .carbon-icon, .category-icon, .recent-icon {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            background-color: currentColor;
+            mask-size: cover;
+            -webkit-mask-size: cover;
+        }
+
+        .back-icon {
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='19' y1='12' x2='5' y2='12'%3E%3C/line%3E%3Cpolyline points='12 19 5 12 12 5'%3E%3C/polyline%3E%3C/svg%3E");
+            -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='19' y1='12' x2='5' y2='12'%3E%3C/line%3E%3Cpolyline points='12 19 5 12 12 5'%3E%3C/polyline%3E%3C/svg%3E");
+        }
+
+        .trash-count-icon {
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3 6 5 6 21 6'%3E%3C/polyline%3E%3Cpath d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'%3E%3C/path%3E%3C/svg%3E");
+            -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3 6 5 6 21 6'%3E%3C/polyline%3E%3Cpath d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'%3E%3C/path%3E%3C/svg%3E");
+        }
+
+        .carbon-icon {
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-4l-3 9L9 3l-3 9H2'%3E%3C/path%3E%3C/svg%3E");
+            -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-4l-3 9L9 3l-3 9H2'%3E%3C/path%3E%3C/svg%3E");
+        }
+
+        .category-icon {
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='7'%3E%3C/rect%3E%3Crect x='14' y='3' width='7' height='7'%3E%3C/rect%3E%3Crect x='14' y='14' width='7' height='7'%3E%3C/rect%3E%3Crect x='3' y='14' width='7' height='7'%3E%3C/rect%3E%3C/svg%3E");
+            -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='7'%3E%3C/rect%3E%3Crect x='14' y='3' width='7' height='7'%3E%3C/rect%3E%3Crect x='14' y='14' width='7' height='7'%3E%3C/rect%3E%3Crect x='3' y='14' width='7' height='7'%3E%3C/rect%3E%3C/svg%3E");
+        }
+
+        .recent-icon {
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'%3E%3C/circle%3E%3Cpolyline points='12 6 12 12 16 14'%3E%3C/polyline%3E%3C/svg%3E");
+            -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'%3E%3C/circle%3E%3Cpolyline points='12 6 12 12 16 14'%3E%3C/polyline%3E%3C/svg%3E");
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <button class="back-button" id="backButton">
+            <div class="back-icon"></div>
+        </button>
+        <h1>Disposal Statistics</h1>
+    </header>
+
+    <main>
+        <div class="time-filter">
+            <button class="time-btn active" data-period="day">Today</button>
+            <button class="time-btn" data-period="week">Week</button>
+            <button class="time-btn" data-period="month">Month</button>
+            <button class="time-btn" data-period="year">Year</button>
+            <button class="time-btn" data-period="all">All Time</button>
+        </div>
+
+        <div class="stats-grid">
+            <div class="card">
+                <div class="card-title">
+                    <div class="trash-count-icon"></div>
+                    Disposal Activity
+                </div>
+                <div class="stat-value">12</div>
+                <div class="stat-label">Items thrown away today</div>
+                <div class="chart-container">
+                    <div class="bar-chart">
+                        <div class="bar" style="height: 30%;">
+                            <div class="bar-label">Mon</div>
+                        </div>
+                        <div class="bar" style="height: 50%;">
+                            <div class="bar-label">Tue</div>
+                        </div>
+                        <div class="bar" style="height: 80%;">
+                            <div class="bar-label">Wed</div>
+                        </div>
+                        <div class="bar" style="height: 40%;">
+                            <div class="bar-label">Thu</div>
+                        </div>
+                        <div class="bar" style="height: 60%;">
+                            <div class="bar-label">Fri</div>
+                        </div>
+                        <div class="bar" style="height: 25%;">
+                            <div class="bar-label">Sat</div>
+                        </div>
+                        <div class="bar" style="height: 20%;">
+                            <div class="bar-label">Sun</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <div class="carbon-icon"></div>
+                    Carbon Footprint
+                </div>
+                <div class="stat-value">5.2 kg</div>
+                <div class="stat-label">CO2e this week</div>
+                <div class="chart-container">
+                    <div class="bar-chart">
+                        <div class="bar" style="height: 40%;">
+                            <div class="bar-label">Week 1</div>
+                        </div>
+                        <div class="bar" style="height: 65%;">
+                            <div class="bar-label">Week 2</div>
+                        </div>
+                        <div class="bar" style="height: 45%;">
+                            <div class="bar-label">Week 3</div>
+                        </div>
+                        <div class="bar" style="height: 70%;">
+                            <div class="bar-label">Week 4</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <div class="category-icon"></div>
+                    Waste Categories
+                </div>
+                <div class="pie-chart"></div>
+                <div class="pie-legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: var(--primary-color);"></div>
+                        <span>Recyclable (25%)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: var(--info-color);"></div>
+                        <span>Compostable (25%)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: var(--warning-color);"></div>
+                        <span>Hazardous (25%)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: var(--highlight-color);"></div>
+                        <span>General (25%)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <div class="recent-icon"></div>
+                    Recent Items
+                </div>
+                <div class="recent-items">
+                    <div class="item-row">
+                        <div class="item-name">Plastic Bottle</div>
+                        <div class="item-category category-recyclable">Recyclable</div>
+                    </div>
+                    <div class="item-row">
+                        <div class="item-name">Banana Peel</div>
+                        <div class="item-category category-compostable">Compostable</div>
+                    </div>
+                    <div class="item-row">
+                        <div class="item-name">Battery</div>
+                        <div class="item-category category-hazardous">Hazardous</div>
+                    </div>
+                    <div class="item-row">
+                        <div class="item-name">Tissue Paper</div>
+                        <div class="item-category category-general">General</div>
+                    </div>
+                    <div class="item-row">
+                        <div class="item-name">Food Container</div>
+                        <div class="item-category category-recyclable">Recyclable</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal for item analysis display -->
+    <div class="modal" id="analysisModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Item Analysis</h2>
+                <button class="close-modal" id="closeModal">&times;</button>
+            </div>
+            <img src="/api/placeholder/400/300" alt="Item image" class="item-image" id="itemImage">
+            <div class="item-tags" id="itemTags">
+                <div class="item-tag">Water Bottle</div>
+                <div class="item-tag">Plastic</div>
+                <div class="item-tag">PET</div>
+            </div>
+            <div class="analysis-item">
+                <div class="analysis-label">Waste Category</div>
+                <div class="analysis-value" id="wasteCategory">Recyclable</div>
+            </div>
+            <div class="analysis-item">
+                <div class="analysis-label">Production CO2e Emissions</div>
+                <div class="analysis-value" id="productionEmissions">0.08 kg</div>
+            </div>
+            <div class="analysis-item">
+                <div class="analysis-label">Improper Disposal CO2e Emissions</div>
+                <div class="analysis-value" id="disposalEmissions">0.05 kg</div>
+            </div>
+            <div class="analysis-item">
+                <div class="analysis-label">Recommended Disposal Method</div>
+                <div class="analysis-value" id="disposalMethod">Curbside recycling bin</div>
+            </div>
+            <div class="analysis-item">
+                <div class="analysis-label">Decomposition Time</div>
+                <div class="analysis-value" id="decompositionTime">450 years</div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>Smart Trash Can &copy; 2025</p>
+    </footer>
+
+    <script>
+        // Elements
+        const backButton = document.getElementById('backButton');
+        const timeBtns = document.querySelectorAll('.time-btn');
+        const modal = document.getElementById('analysisModal');
+        const closeModal = document.getElementById('closeModal');
+        
+        // Event listeners
+        backButton.addEventListener('click', () => {
+            window.location.href = 'index.html';
+        });
+        
+        closeModal.addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+        
+        // Time period filter
+        timeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Remove active class from all buttons
+                timeBtns.forEach(b => b.classList.remove('active'));
+                // Add active class to clicked button
+                btn.classList.add('active');
+                
+                // Update stats based on selected time period
+                updateStats(btn.dataset.period);
+            });
+        });
+        
+        // Function to update statistics based on time period
+        function updateStats(period) {
+            console.log(`Updating stats for period: ${period}`);
+            // This would fetch data from the server for the selected time period
+            // For now, we'll just log the period
+            
+            // Example data structure that would come from the server
+            const mockData = {
+                day: {
+                    itemCount: 12,
+                    carbonFootprint: "1.8 kg",
+                    categories: {
+                        recyclable: 30,
+                        compostable: 20,
+                        hazardous: 10,
+                        general: 40
+                    },
+                    // Other relevant data...
+                },
+                week: {
+                    itemCount: 45,
+                    carbonFootprint: "5.2 kg",
+                    categories: {
+                        recyclable: 25,
+                        compostable: 25,
+                        hazardous: 25,
+                        general: 25
+                    },
+                    // Other relevant data...
+                },
+                // Month, year, all data...
+            };
+            
+            // In a real implementation, we would update the DOM with the fetched data
+        }
+        
+        // Function to show item analysis modal
+        function showItemAnalysis(itemId) {
+            // This would fetch item data from the server
+            // For now, we'll just show the modal with mock data
+            modal.style.display = 'flex';
+            
+            // In a real implementation, we would populate the modal with the fetched data
+        }
+        
+        // Add click event to recent items
+        document.querySelectorAll('.item-row').forEach(row => {
+            row.addEventListener('click', () => {
+                // In real implementation, we would pass the item ID
+                showItemAnalysis(1);
+            });
+        });
+        
+        // Initialize stats with default period (day)
+        updateStats('day');
+        
+        // Simulated item detection (for demonstration)
+        function simulateItemDetection() {
+            // This function would be called when an item is detected
+            // For demonstration, we'll add a timeout to show it after 5 seconds
+            setTimeout(() => {
+                showItemAnalysis();
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
