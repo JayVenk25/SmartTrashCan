@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Trash Can</title>
+  <script src="/static/main.js" defer></script>
+  <style>
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
+    button { margin: 10px; padding: 20px; font-size: 1.2rem; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <button id="toggleBtn">{{ 'Close' if state=='open' else 'Open' }}</button>
+  <button onclick="location.href='/stats'">Statistics</button>
+  <button onclick="location.href='/search'">Search</button>
+  <pre id="result"></pre>
+</body>
+</html>

@@ -1,10 +1,13 @@
 import os
 import time
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 import cv2
 from google.cloud import vision
+import torch
 from llama_cpp import Llama
+from datetime import datetime, timedelta
+from collections import Counter
 
 # Configuration
 CAMERA_ID = 0
@@ -19,48 +22,36 @@ os.makedirs(STORAGE_PATH, exist_ok=True)
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = CREDENTIALS_PATH
 vision_client = vision.ImageAnnotatorClient()
 
-# Initialize local LLaMA model
+# Initialize local LLaMA model (for GGUF format)
 llm = Llama(
     model_path=MODEL_PATH,
-    n_ctx=2048,
-    n_threads=4,
-    n_gpu_layers=0
+    n_ctx=2048,     # Context window
+    n_threads=4,    # Number of CPU threads to use
+    n_gpu_layers=0  # Set higher (e.g., 32) if you have a good GPU
 )
 
 class SmartTrashCan:
     def __init__(self):
         self.camera = cv2.VideoCapture(CAMERA_ID)
-        self.database_path = os.path.join(STORAGE_PATH, "items_database.json")
         self.items_database = self._load_database()
         
     def _load_database(self):
         """Load existing database or create a new one"""
-        if os.path.exists(self.database_path):
-            with open(self.database_path, 'r') as f:
+        db_path = os.path.join(STORAGE_PATH, "items_database.json")
+        if os.path.exists(db_path):
+            with open(db_path, 'r') as f:
                 return json.load(f)
-        return {
-            "items": [],
-            "statistics": {
-                "total_items": 0,
-                "total_carbon_footprint": 0,
-                "categories": {
-                    "recyclable": 0,
-                    "compostable": 0,
-                    "hazardous": 0,
-                    "general": 0
-                },
-                "item_types": {}
-            }
-        }
+        return {"items": []}
     
     def _save_database(self):
         """Save the database to disk"""
-        with open(self.database_path, 'w') as f:
+        db_path = os.path.join(STORAGE_PATH, "items_database.json")
+        with open(db_path, 'w') as f:
             json.dump(self.items_database, f, indent=2)
     
     def capture_image(self):
         """Capture an image from the camera"""
-        print("Capturing image...")
+        print("Motion detected! Capturing image...")
         ret, frame = self.camera.read()
         if not ret:
             print("Failed to capture image")
@@ -90,19 +81,17 @@ class SmartTrashCan:
         """Use local LLaMA model to analyze the detected objects"""
         print("Analyzing with local LLaMA model...")
         
-        # Updated prompt with your specific questions
+        # Construct a prompt for the LLM
         prompt = f"""
         The following items were detected in a trash can: {', '.join(objects)}
         
-        Please analyze this trash item and provide the following information in JSON format:
+        Please provide the following information:
+        1. What category of waste is this (recyclable, compostable, hazardous, general waste)?
+        2. Environmental impact of disposing this item
+        3. Better alternatives for disposal if applicable
+        4. Estimated decomposition time
         
-        1. waste_category: What category of waste is this? Choose one: "recyclable", "compostable", "hazardous", or "general".
-        2. production_emissions: Estimated CO2e (carbon equivalent) emissions from producing this item (in kg).
-        3. disposal_emissions: Estimated CO2e emissions from improper disposal (e.g., landfill) (in kg).
-        4. recommended_disposal: Recommended disposal method (e.g., curbside recycling, e-waste center, compost bin).
-        5. decomposition_time: Estimated decomposition time (e.g., "450 years", "6 months").
-        
-        Respond with a valid JSON object containing only these five fields, with no additional text or explanation.
+        Respond in JSON format with the fields: category, environmental_impact, better_disposal, decomposition_time
         """
         
         # Get response from local LLM
@@ -116,43 +105,24 @@ class SmartTrashCan:
         llm_response = response['choices'][0]['text'].strip()
         print(f"LLM Analysis: {llm_response}")
         
-        # Try to parse as JSON
+        # Try to parse as JSON, if fails return as text
         try:
-            analysis = json.loads(llm_response)
-            # Ensure all required fields are present
-            required_fields = ["waste_category", "production_emissions", "disposal_emissions", 
-                              "recommended_disposal", "decomposition_time"]
-            
-            for field in required_fields:
-                if field not in analysis:
-                    analysis[field] = "Unknown"
-                    
-            return analysis
-            
+            return json.loads(llm_response)
         except json.JSONDecodeError:
-            # If JSON parsing fails, create a structured response from the text
-            print("Failed to parse LLM response as JSON. Creating structured response...")
-            return {
-                "waste_category": "unknown",
-                "production_emissions": "unknown",
-                "disposal_emissions": "unknown",
-                "recommended_disposal": "unknown",
-                "decomposition_time": "unknown",
-                "raw_analysis": llm_response
-            }
+            return {"analysis": llm_response}
     
     def process_new_item(self):
         """Process a new item being thrown away"""
         # Step 1: Capture image
         image_path = self.capture_image()
         if not image_path:
-            return None
+            return
         
         # Step 2: Detect objects with Google Cloud Vision
         detected_objects = self.detect_object(image_path)
         if not detected_objects:
             print("No objects detected")
-            return None
+            return
             
         # Step 3: Analyze with local LLM
         analysis = self.analyze_with_llm(detected_objects)
@@ -164,138 +134,13 @@ class SmartTrashCan:
             "timestamp": timestamp,
             "image_path": image_path,
             "detected_objects": detected_objects,
-            "waste_category": analysis.get("waste_category", "unknown"),
-            "production_emissions": analysis.get("production_emissions", "unknown"),
-            "disposal_emissions": analysis.get("disposal_emissions", "unknown"),
-            "recommended_disposal": analysis.get("recommended_disposal", "unknown"),
-            "decomposition_time": analysis.get("decomposition_time", "unknown")
+            "analysis": analysis
         }
         
-        # Add to items list
         self.items_database["items"].append(item_data)
-        
-        # Update statistics
-        self._update_statistics(item_data)
-        
-        # Save database
         self._save_database()
         print(f"Item #{item_data['id']} processed and saved to database")
-        
         return item_data
-    
-    def _update_statistics(self, item_data):
-        """Update statistics based on new item"""
-        stats = self.items_database["statistics"]
-        
-        # Increment total items
-        stats["total_items"] += 1
-        
-        # Update category counts
-        category = item_data["waste_category"].lower()
-        if category in stats["categories"]:
-            stats["categories"][category] += 1
-        else:
-            # If somehow the category is not one of our predefined ones
-            stats["categories"]["general"] += 1
-        
-        # Update item types frequency
-        primary_object = item_data["detected_objects"][0] if item_data["detected_objects"] else "Unknown"
-        if primary_object in stats["item_types"]:
-            stats["item_types"][primary_object] += 1
-        else:
-            stats["item_types"][primary_object] = 1
-        
-        # Update carbon footprint
-        try:
-            # Try to extract numeric value from emissions string
-            production_emission = self._extract_numeric_value(item_data["production_emissions"])
-            stats["total_carbon_footprint"] += production_emission
-        except:
-            # If we can't parse the emissions, don't update the total
-            pass
-    
-    def _extract_numeric_value(self, emission_string):
-        """Extract numeric value from a string like '0.08 kg'"""
-        try:
-            return float(''.join(c for c in emission_string if c.isdigit() or c == '.'))
-        except:
-            return 0
-    
-    def get_statistics(self, period="all"):
-        """Get statistics for a specific time period"""
-        stats = {
-            "itemCount": 0,
-            "carbonFootprint": 0,
-            "categories": {
-                "recyclable": 0,
-                "compostable": 0,
-                "hazardous": 0,
-                "general": 0
-            },
-            "topItems": []
-        }
-        
-        # Calculate start date based on period
-        now = datetime.now()
-        start_date = None
-        
-        if period == "day":
-            start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        elif period == "week":
-            start_date = now - timedelta(days=now.weekday())  # Monday of current week
-            start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
-        elif period == "month":
-            start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        elif period == "year":
-            start_date = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        
-        # Filter items by date if needed
-        filtered_items = self.items_database["items"]
-        if start_date:
-            filtered_items = [
-                item for item in self.items_database["items"]
-                if datetime.fromisoformat(item["timestamp"]) >= start_date
-            ]
-        
-        # Count items in period
-        stats["itemCount"] = len(filtered_items)
-        
-        # Calculate carbon footprint
-        carbon_footprint = 0
-        category_counts = {"recyclable": 0, "compostable": 0, "hazardous": 0, "general": 0}
-        item_types = {}
-        
-        for item in filtered_items:
-            # Add to carbon footprint
-            try:
-                emission = self._extract_numeric_value(item["production_emissions"])
-                carbon_footprint += emission
-            except:
-                pass
-            
-            # Add to category counts
-            category = item["waste_category"].lower()
-            if category in category_counts:
-                category_counts[category] += 1
-            else:
-                category_counts["general"] += 1
-            
-            # Count item types
-            if item["detected_objects"]:
-                primary_object = item["detected_objects"][0]
-                if primary_object in item_types:
-                    item_types[primary_object] += 1
-                else:
-                    item_types[primary_object] = 1
-        
-        stats["carbonFootprint"] = f"{carbon_footprint:.2f} kg"
-        stats["categories"] = category_counts
-        
-        # Get top items
-        top_items = sorted(item_types.items(), key=lambda x: x[1], reverse=True)[:5]
-        stats["topItems"] = [{"name": item[0], "count": item[1]} for item in top_items]
-        
-        return stats
     
     def search_item(self, keyword):
         """Search for items in the database matching a keyword"""
@@ -305,6 +150,12 @@ class SmartTrashCan:
             # Search in detected objects
             if any(keyword.lower() in obj.lower() for obj in item["detected_objects"]):
                 results.append(item)
+            
+            # Search in analysis text if it's stored as text
+            if isinstance(item["analysis"], dict) and "analysis" in item["analysis"]:
+                if keyword.lower() in item["analysis"]["analysis"].lower():
+                    if item not in results:
+                        results.append(item)
         
         return results
     
@@ -316,20 +167,68 @@ class SmartTrashCan:
                 # In a real implementation, you would have motion detection here
                 # For simplicity, we'll just wait for user input
                 input("Press Enter to simulate throwing away an item...")
-                item_data = self.process_new_item()
-                if item_data:
-                    print(f"Item analysis complete: {item_data['waste_category']}")
+                self.process_new_item()
                 
         except KeyboardInterrupt:
             print("Shutting down Smart Trash Can")
             self.camera.release()
-            
-    def get_item_by_id(self, item_id):
-        """Get an item by its ID"""
-        for item in self.items_database["items"]:
-            if item["id"] == item_id:
-                return item
-        return None
+
+    def compute_stats(self, period='all'):
+        now = datetime.now()
+        # Helper to filter items by time period
+        def in_period(ts):
+            dt = datetime.fromisoformat(ts)
+            if period == 'today':
+                return dt.date() == now.date()
+            if period == 'week':
+                start = now - timedelta(days=now.weekday())
+                return dt.date() >= start.date()
+            if period == 'month':
+                return dt.year == now.year and dt.month == now.month
+            if period == 'year':
+                return dt.year == now.year
+            return True
+
+        # Filter items in the given period
+        items = [item for item in self.items_database['items'] if in_period(item['timestamp'])]
+        total = len(items)
+
+        # Normalize categories to lowercase and expected set
+        expected_cats = {'recyclable', 'compostable', 'hazardous', 'general waste'}
+        normalized = []
+        for item in items:
+            analysis = item.get('analysis', {})
+            cat = analysis.get('category', '').lower().strip()
+            if cat not in expected_cats:
+                cat = 'unknown'
+            normalized.append(cat)
+        cat_counts = Counter(normalized)
+
+        # Count most common detected objects
+        objects = [obj for item in items for obj in item.get('detected_objects', [])]
+        obj_counts = Counter(objects).most_common(5)
+
+        # Sum numeric environmental impact if available
+        footprint = 0
+        for item in items:
+            analysis = item.get('analysis', {})
+            impact = analysis.get('environmental_impact')
+            try:
+                footprint += float(impact)
+            except (TypeError, ValueError):
+                continue
+
+        return {
+            'total_disposed': total,
+            'carbon_footprint': round(footprint, 2),
+            'recyclable': cat_counts.get('recyclable', 0),
+            'compostable': cat_counts.get('compostable', 0),
+            'hazardous': cat_counts.get('hazardous', 0),
+            'general_waste': cat_counts.get('general waste', 0),
+            'unknown': cat_counts.get('unknown', 0),
+            'common_items': obj_counts,
+            'recent_items': sorted(items, key=lambda x: x['timestamp'], reverse=True)[:5]
+        }
 
 # For testing purposes
 if __name__ == "__main__":
